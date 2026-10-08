@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pesagem de Gado</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f3f5f7;color:#222}
+.container{max-width:900px;margin:20px auto;padding:15px}
+.card{background:#fff;border-radius:14px;padding:20px;margin-bottom:16px;box-shadow:0 3px 15px rgba(0,0,0,.08)}
+h1{text-align:center;margin:0 0 6px}.sub{text-align:center;color:#666;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+label{display:block;font-weight:bold;font-size:14px;margin-bottom:5px}
+input{width:100%;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:16px}
+.buttons{display:flex;flex-wrap:wrap;gap:10px;margin-top:15px}
+button{border:0;border-radius:8px;padding:12px 16px;font-weight:bold;font-size:15px;cursor:pointer}
+.primary{background:#1976d2;color:white}.green{background:#2e7d32;color:white}.red{background:#c62828;color:white}.gray{background:#607d8b;color:white}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:15px}
+.stat{background:#eef2f5;border-radius:10px;padding:15px;text-align:center}.stat strong{display:block;font-size:24px;margin-top:5px}
+table{width:100%;border-collapse:collapse;margin-top:15px}th,td{padding:10px;border-bottom:1px solid #ddd;text-align:center}
+th{background:#eef2f5}.notice{font-size:13px;color:#666;margin-top:10px}
+@media(max-width:650px){.grid,.stats{grid-template-columns:1fr}.container{padding:10px}button{width:100%}}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="card">
+<h1>🐂 Pesagem de Gado</h1>
+<div class="sub">Registro de pesos, total e média do lote</div>
+<div class="grid">
+<div><label>Nome da Fazenda</label><input id="fazenda" type="text" placeholder="Ex.: Fazenda Boa Vista"></div>
+<div><label>Nome do Lote</label><input id="lote" type="text" placeholder="Ex.: Lote 01"></div>
+<div><label>Data da Pesagem</label><input id="data" type="date"></div>
+</div>
+<div class="grid" style="margin-top:15px">
+<div>
+<label>Valor do kg (R$)</label>
+<input id="valorKg" type="number" min="0" step="0.01" placeholder="Ex.: 12,50">
+</div>
+<div style="grid-column:span 2">
+<label>Peso do animal (kg)</label>
+<input id="peso" type="number" min="0" step="0.1" placeholder="Digite o peso e pressione Enter">
+</div>
+</div>
+<div class="buttons">
+<button class="primary" onclick="adicionar()">➕ Adicionar Peso</button>
+<button class="green" onclick="excel()">📗 Exportar Excel</button>
+<button class="red" onclick="pdf()">📄 Exportar PDF</button>
+<button class="gray" onclick="limpar()">🗑️ Limpar Tudo</button>
+</div>
+<div class="stats">
+<div class="stat">Animais<strong id="qtd">0</strong></div>
+<div class="stat">Peso Total<strong id="total">0,0 kg</strong></div>
+<div class="stat">Peso Médio<strong id="media">0,0 kg</strong></div>
+<div class="stat">Valor do kg<strong id="valorKgResumo">R$ 0,00</strong></div>
+<div class="stat">Valor Total<strong id="valorTotal">R$ 0,00</strong></div>
+<div class="stat">Valor Médio/Animal<strong id="valorMedio">R$ 0,00</strong></div>
+</div>
+</div>
+<div class="card">
+<h2>Pesos registrados</h2>
+<table><thead><tr><th>#</th><th>Peso (kg)</th><th>Ação</th></tr></thead><tbody id="lista"></tbody></table>
+<div class="notice">Os dados ficam salvos automaticamente neste navegador.</div>
+</div>
+</div>
+<script>
+let pesos=JSON.parse(localStorage.getItem("gado_pesos")||"[]");
+const $=id=>document.getElementById(id);
+function hoje(){return new Date().toISOString().slice(0,10)}
+$("data").value=localStorage.getItem("gado_data")||hoje();
+$("fazenda").value=localStorage.getItem("gado_fazenda")||"";
+$("lote").value=localStorage.getItem("gado_lote")||"";
+$("valorKg").value=localStorage.getItem("gado_valorKg")||"";
+function salvar(){
+localStorage.setItem("gado_pesos",JSON.stringify(pesos));
+localStorage.setItem("gado_fazenda",$("fazenda").value);
+localStorage.setItem("gado_lote",$("lote").value);
+localStorage.setItem("gado_data",$("data").value);
+localStorage.setItem("gado_valorKg",$("valorKg").value);
+}
+["fazenda","lote","data","valorKg"].forEach(x=>$(x).addEventListener("input",()=>{salvar();atualizar()}));
+$("peso").addEventListener("keydown",e=>{if(e.key==="Enter")adicionar()});
+function fmt(n){return n.toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1})}
+function adicionar(){
+let v=parseFloat($("peso").value.replace(",","."));
+if(!isFinite(v)||v<=0){alert("Digite um peso válido maior que zero.");return}
+pesos.push(v);$("peso").value="";salvar();atualizar();$("peso").focus();
+}
+function remover(i){
+if(confirm("Deseja remover este peso?")){pesos.splice(i,1);salvar();atualizar()}
+}
+function dinheiro(n){
+return n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+}
+function valorAtualKg(){
+return parseFloat(($("valorKg").value||"0").replace(",", "."))||0;
+}
+function atualizar(){
+$("lista").innerHTML=pesos.map((p,i)=>`<tr><td>${i+1}</td><td>${fmt(p)}</td><td><button class="red" onclick="remover(${i})">Excluir</button></td></tr>`).join("");
+let t=pesos.reduce((a,b)=>a+b,0);
+let kg=valorAtualKg();
+let vt=t*kg;
+let vm=pesos.length?vt/pesos.length:0;
+$("qtd").textContent=pesos.length;
+$("total").textContent=fmt(t)+" kg";
+$("media").textContent=fmt(pesos.length?t/pesos.length:0)+" kg";
+$("valorKgResumo").textContent=dinheiro(kg);
+$("valorTotal").textContent=dinheiro(vt);
+$("valorMedio").textContent=dinheiro(vm);
+}
+function csv(v){return '"'+String(v).replaceAll('"','""')+'"'}
+function excel(){
+if(!pesos.length){alert("Adicione pelo menos um peso.");return}
+let t=pesos.reduce((a,b)=>a+b,0),kg=valorAtualKg(),vt=t*kg,vm=pesos.length?vt/pesos.length:0;
+let d=$("data").value?$("data").value.split("-").reverse().join("/"):"";
+let linhas=[["PESAGEM DE GADO"],["Fazenda",$("fazenda").value],["Lote",$("lote").value],["Data",d],["Valor do kg (R$)",kg.toFixed(2).replace(".",",")],[],["Animal","Peso (kg)","Valor (R$)"]];
+pesos.forEach((p,i)=>linhas.push([i+1,p.toFixed(1).replace(".",","),(p*kg).toFixed(2).replace(".",",")]));
+linhas.push([],["Quantidade de animais",pesos.length],["Peso total (kg)",t.toFixed(1).replace(".",",")],["Peso médio (kg)",(t/pesos.length).toFixed(1).replace(".",",")],["Valor do kg (R$)",kg.toFixed(2).replace(".",",")],["Valor total (R$)",vt.toFixed(2).replace(".",",")],["Valor médio por animal (R$)",vm.toFixed(2).replace(".",",")]);
+let blob=new Blob(["\ufeff"+linhas.map(r=>r.map(csv).join(";")).join("\r\n")],{type:"text/csv;charset=utf-8"});
+let a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="pesagem_gado.csv";a.click();URL.revokeObjectURL(a.href);
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+function pdf(){
+if(!pesos.length){alert("Adicione pelo menos um peso.");return}
+let j=window.open("","_blank");if(!j){alert("Permita pop-ups no navegador.");return}
+let t=pesos.reduce((a,b)=>a+b,0),kg=valorAtualKg(),vt=t*kg,vm=pesos.length?vt/pesos.length:0;
+let d=$("data").value?$("data").value.split("-").reverse().join("/"):"";
+let rows=pesos.map((p,i)=>`<tr><td>${i+1}</td><td>${fmt(p)} kg</td><td>${dinheiro(p*kg)}</td></tr>`).join("");
+j.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Relatório de Pesagem</title>
+<style>body{font-family:Arial;padding:30px}h1{text-align:center}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #aaa;padding:8px;text-align:center}th{background:#eee}.resumo{margin-top:20px;font-size:17px;line-height:1.7}button{padding:10px 15px}@media print{button{display:none}}</style></head>
+<body><h1>Relatório de Pesagem de Gado</h1>
+<p><b>Fazenda:</b> ${esc($("fazenda").value)}</p>
+<p><b>Lote:</b> ${esc($("lote").value)}</p>
+<p><b>Data da Pesagem:</b> ${d}</p>
+<p><b>Valor do kg:</b> ${dinheiro(kg)}</p>
+<table><thead><tr><th>Animal</th><th>Peso</th><th>Valor</th></tr></thead><tbody>${rows}</tbody></table>
+<div class="resumo"><b>Quantidade:</b> ${pesos.length} animais<br><b>Peso total:</b> ${fmt(t)} kg<br><b>Peso médio:</b> ${fmt(t/pesos.length)} kg<br><b>Valor total do lote:</b> ${dinheiro(vt)}<br><b>Valor médio por animal:</b> ${dinheiro(vm)}</div>
+<p><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></p>
+<script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
+</body></html>`);
+j.document.close();
+}
+function limpar(){
+if(!confirm("Apagar todos os pesos e dados da pesagem?"))return;
+pesos=[];["gado_pesos","gado_fazenda","gado_lote","gado_data","gado_valorKg"].forEach(k=>localStorage.removeItem(k));
+$("fazenda").value="";$("lote").value="";$("data").value=hoje();$("valorKg").value="";atualizar();
+}
+atualizar();
+</script>
+</body>
+</html>
