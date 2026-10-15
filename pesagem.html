@@ -121,25 +121,92 @@ let blob=new Blob(["\ufeff"+linhas.map(r=>r.map(csv).join(";")).join("\r\n")],{t
 let a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="pesagem_gado.csv";a.click();URL.revokeObjectURL(a.href);
 }
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
-function pdf(){
-if(!pesos.length){alert("Adicione pelo menos um peso.");return}
-let j=window.open("","_blank");if(!j){alert("Permita pop-ups no navegador.");return}
-let t=pesos.reduce((a,b)=>a+b,0),kg=valorAtualKg(),vt=t*kg,vm=pesos.length?vt/pesos.length:0;
-let d=$("data").value?$("data").value.split("-").reverse().join("/"):"";
-let rows=pesos.map((p,i)=>`<tr><td>${i+1}</td><td>${fmt(p)} kg</td><td>${dinheiro(p*kg)}</td></tr>`).join("");
-j.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Relatório de Pesagem</title>
-<style>body{font-family:Arial;padding:30px}h1{text-align:center}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #aaa;padding:8px;text-align:center}th{background:#eee}.resumo{margin-top:20px;font-size:17px;line-height:1.7}button{padding:10px 15px}@media print{button{display:none}}</style></head>
-<body><h1>Relatório de Pesagem de Gado</h1>
-<p><b>Fazenda:</b> ${esc($("fazenda").value)}</p>
-<p><b>Lote:</b> ${esc($("lote").value)}</p>
-<p><b>Data da Pesagem:</b> ${d}</p>
-<p><b>Valor do kg:</b> ${dinheiro(kg)}</p>
-<table><thead><tr><th>Animal</th><th>Peso</th><th>Valor</th></tr></thead><tbody>${rows}</tbody></table>
-<div class="resumo"><b>Quantidade:</b> ${pesos.length} animais<br><b>Peso total:</b> ${fmt(t)} kg<br><b>Peso médio:</b> ${fmt(t/pesos.length)} kg<br><b>Valor total do lote:</b> ${dinheiro(vt)}<br><b>Valor médio por animal:</b> ${dinheiro(vm)}</div>
-<p><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></p>
-<script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
-</body></html>`);
-j.document.close();
+async function pdf(){
+ if(!pesos.length){alert("Adicione pelo menos um peso.");return}
+ const btnPdf = document.querySelector('button.red');
+ const textoOriginal = btnPdf ? btnPdf.textContent : "";
+ if(btnPdf){btnPdf.disabled=true;btnPdf.textContent="Preparando PDF...";}
+ try{
+   // Carrega jsPDF sob demanda para gerar um arquivo PDF real, sem depender da janela de impressão.
+   if(!window.jspdf || !window.jspdf.jsPDF){
+     await new Promise((resolve,reject)=>{
+       const script=document.createElement("script");
+       script.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+       script.onload=resolve;
+       script.onerror=()=>reject(new Error("Não foi possível carregar o gerador de PDF."));
+       document.head.appendChild(script);
+     });
+   }
+   const {jsPDF}=window.jspdf;
+   const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+   const margem=14, largura=182;
+   const t=pesos.reduce((a,b)=>a+b,0), kg=valorAtualKg(), vt=t*kg, vm=pesos.length?vt/pesos.length:0;
+   const data=$("data").value?$("data").value.split("-").reverse().join("/"):"";
+   let y=18;
+   doc.setFont("helvetica","bold");doc.setFontSize(16);
+   doc.text("Relatorio de Pesagem de Gado",105,y,{align:"center"});
+   y+=11;
+   doc.setFont("helvetica","normal");doc.setFontSize(10);
+   const detalhes=[
+     "Fazenda: "+($("fazenda").value||"-"),
+     "Lote: "+($("lote").value||"-"),
+     "Data da Pesagem: "+(data||"-"),
+     "Valor do kg: "+dinheiro(kg)
+   ];
+   detalhes.forEach(txt=>{const linhas=doc.splitTextToSize(txt,largura);doc.text(linhas,margem,y);y+=linhas.length*5+1;});
+   y+=3;
+   const col=[margem,margem+28,margem+91,margem+145];
+   function cabecalho(){
+     doc.setFillColor(235,239,243);doc.rect(margem,y,largura,8,"F");
+     doc.setFont("helvetica","bold");doc.text("Animal",col[0]+2,y+5.5);
+     doc.text("Peso",col[1]+2,y+5.5);
+     doc.text("Valor",col[2]+2,y+5.5);
+     doc.setFont("helvetica","normal");y+=8;
+   }
+   cabecalho();
+   pesos.forEach((peso,i)=>{
+     if(y>275){doc.addPage();y=18;cabecalho();}
+     doc.setDrawColor(210,210,210);doc.line(margem,y,margem+largura,y);
+     doc.text(String(i+1),col[0]+2,y+5.5);
+     doc.text(fmt(peso)+" kg",col[1]+2,y+5.5);
+     doc.text(dinheiro(peso*kg),col[2]+2,y+5.5);
+     y+=8;
+   });
+   y+=8;
+   if(y>250){doc.addPage();y=18;}
+   doc.setFont("helvetica","bold");doc.setFontSize(11);
+   const resumo=[
+     "Quantidade: "+pesos.length+" animais",
+     "Peso total: "+fmt(t)+" kg",
+     "Peso medio: "+fmt(t/pesos.length)+" kg",
+     "Valor total do lote: "+dinheiro(vt),
+     "Valor medio por animal: "+dinheiro(vm)
+   ];
+   resumo.forEach(txt=>{if(y>280){doc.addPage();y=18;}doc.text(txt,margem,y);y+=7;});
+   const nome="pesagem_gado_"+($("data").value||hoje())+".pdf";
+   const arquivo=doc.output("blob");
+   const file=new File([arquivo],nome,{type:"application/pdf"});
+   // Em iPhone/iPad, abrir a folha nativa de compartilhamento permite salvar em Arquivos.
+   if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+     await navigator.share({files:[file],title:"Relatorio de Pesagem de Gado"});
+   }else{
+     const url=URL.createObjectURL(arquivo);
+     const nova=window.open(url,"_blank");
+     if(!nova){
+       const link=document.createElement("a");link.href=url;link.download=nome;
+       link.style.display="none";document.body.appendChild(link);link.click();link.remove();
+       alert("PDF gerado. Se não baixar automaticamente, use a opção de compartilhar/abrir do navegador para salvar em Arquivos.");
+     }else{
+       alert("PDF gerado. No iPhone, use Compartilhar na visualização do PDF e escolha Salvar em Arquivos.");
+     }
+     setTimeout(()=>URL.revokeObjectURL(url),60000);
+   }
+ }catch(err){
+   console.error(err);
+   alert("Não foi possível gerar/compartilhar o PDF. Verifique a conexão com a internet e tente novamente. Se o problema continuar, use Exportar PDF pelo Safari.");
+ }finally{
+   if(btnPdf){btnPdf.disabled=false;btnPdf.textContent=textoOriginal;}
+ }
 }
 function limpar(){
 if(!confirm("Apagar todos os pesos e dados da pesagem?"))return;
